@@ -1,0 +1,8 @@
+.vscode
+obj/
+BSP/
+*.elf
+*.map
+*.objdump
+*.srec
+Makefile
