@@ -1,146 +1,101 @@
+#include "common.h"
+#include "view.h"
+#include "tetris.h"
 #include "main.h"
 
-int init_devices();
-void init_block();
-void draw_appearance();
-void draw_block();
-void demo();
 void check_buttons();
-void debug_output();
+void reset_buttons();
+int init_devices();
 
-int main(void)
+int cnt=0;
+int button[4];
+states state;
+alt_up_pixel_buffer_dma_dev *screen;
+alt_up_char_buffer_dev *screen_chara;
+alt_up_parallel_port_dev *push_button;
+
+int main(void) 
 {
-	alt_printf("Info: System initialization started!");
-
 	// デバイスの初期化
 	if(init_devices() != 0)
 	{
 		alt_printf("Error: device initialize failed.");
 		return 1;
 	}
-
+	
 	// 画面を黒に初期化
-	alt_up_pixel_buffer_dma_clear_screen(screen, 0);
+	clear_screen();
 
-	init_block();
-
-	score = 0;
-	cnt = 0;
+	switch_state(DEMONSTRATION);
 
 	while(1)
 	{
 		if (alt_up_pixel_buffer_dma_check_swap_buffers_status(screen) == 0)
 		{
-			// ボタンの取得
 			check_buttons();
-
-			if(cnt%10==0)
-				demo();
-
-			// 外観の描画
-			draw_appearance();
-
-			// ブロックの描画
-			draw_block();
-			
-			debug_output();
+			switch(state)
+			{
+				case DEMONSTRATION:	
+					draw_appearance();
+					if(cnt%10==0)
+						demo();
+					draw_block();
+					draw_dialogue("DEMONSTRATION");
+					if(button[BUTTON_ROTATE]==1)
+						switch_state(PLAYING);
+					break;
+				case PLAYING:
+					tetris_update();
+					draw_appearance();
+					draw_block();
+					draw_next_block();
+					break;
+				case GAMEOVER:
+					draw_appearance();
+					draw_block();
+					draw_dialogue("GAMEOVER");
+					if(button[BUTTON_ROTATE]==1)
+						switch_state(DEMONSTRATION);
+					break;
+			}
 
 			cnt++;
 			alt_up_pixel_buffer_dma_swap_buffers(screen);
 		}
 	}
+	return 0 ;
 }
 
-// 基本的な外観を描画する.
-void draw_appearance()
+// 状態を変える関数. 状態遷移を起こす前の初期化などに使う.
+void switch_state(states next_state)
 {
-	int x,y;
-	// ブロックが入るスペース
-	x=45;
-	y=20;
-	alt_up_pixel_buffer_dma_draw_box(screen,     x,     y,   x+4, y+205, COLOR_DARKGREY, 0);
-	alt_up_pixel_buffer_dma_draw_box(screen, x+106,     y, x+110, y+205, COLOR_DARKGREY, 0);
-	alt_up_pixel_buffer_dma_draw_box(screen,   x+5, y+201, x+105, y+205, COLOR_DARKGREY, 0);
-	// 次のブロックを表示する場所
-	x=165;
-	y=20;
-	alt_up_pixel_buffer_dma_draw_box(screen,    x,    y, x+60,  y+5, COLOR_DARKGREY, 0);
-	alt_up_pixel_buffer_dma_draw_box(screen,    x,    y,  x+5, y+60, COLOR_DARKGREY, 0);
-	alt_up_pixel_buffer_dma_draw_box(screen, x+55,    y, x+60, y+60, COLOR_DARKGREY, 0);
-	alt_up_pixel_buffer_dma_draw_box(screen,    x, y+55, x+60, y+60, COLOR_DARKGREY, 0);
-	alt_up_char_buffer_string (screen_chara, "NEXT", chx(x), chy(y));
-	//スコア用のスペース
-	x=165;
-	y=100;
-	char buf[20];
-	sprintf(buf, "SCORE: %06d", score);
-	alt_up_char_buffer_string (screen_chara, buf, chx(x), chy(y));
+	clear_screen();
+	clear_char_buf();
+
+    switch(next_state)
+    {
+        case DEMONSTRATION:
+			init_block();
+            state = DEMONSTRATION;
+            break;
+        case PLAYING:
+			init_block();
+			init_tetris();
+            state = PLAYING;
+            break;
+		case GAMEOVER:
+			state = GAMEOVER;
+			break;
+    }
 }
 
-// デバッグ用の出力. ボタンが押されてるかなどを表示.
-void debug_output()
+// ボタンの状態をリセットする.
+void reset_buttons()
 {
-	int i,x;
-	x = 165;
-	int chy_ = chy(100);
-	chy_++;
-	char buf[20];
-
-	sprintf(buf, "CNT:   %06d", cnt);
-	alt_up_char_buffer_string (screen_chara, buf, chx(x), chy_++);
-	
+	int i;
 	for(i=0; i<NUM_BUTTON; i++)
 	{
-		sprintf(buf, "BUTTON[%d]:   %04d", i, button[i]);
-		alt_up_char_buffer_string (screen_chara, buf, chx(x), chy_++);
-	}
-}
-
-// 適当な色のブロックを表示しておく.
-void demo()
-{
-	int x,y;
-	int colors[] = {COLOR_BLUE, COLOR_GREEN, COLOR_YELLOW, COLOR_RED, COLOR_PURPLE, COLOR_PINK, COLOR_ORANGE, COLOR_WHITE, COLOR_GREENYELLOW};
-	for(y=0; y<TETRIS_VIEW_HEIGHT; y++)
-	{
-		for(x=0; x<TETRIS_VIEW_WIDTH; x++)
-		{
-			view_block[y][x].flg = 1;
-			view_block[y][x].color = colors[rand()%9];
-		}
-	}
-}
-
-// ブロックを描画する.
-void draw_block()
-{
-	int x,y;
-	for(y=0; y<TETRIS_VIEW_HEIGHT; y++)
-	{
-		for(x=0; x<TETRIS_VIEW_WIDTH; x++)
-		{
-			if(view_block[y][x].flg)
-			{
-				// 50, 20はブロックのスペースの右上の座標
-				int ulx = 50+x*10;
-				int uly = 20+y*10;
-				alt_up_pixel_buffer_dma_draw_box(screen, ulx+1, uly+1, ulx+9, uly+9, view_block[y][x].color, 0 );
-			}
-		}
-	}
-}
-
-// ブロックを全部リセットする.
-void init_block()
-{
-	int x,y;
-	for(y=0; y<TETRIS_VIEW_HEIGHT; y++)
-	{
-		for(x=0; x<TETRIS_VIEW_WIDTH; x++)
-		{
-			view_block[y][x].flg = 0;
-			view_block[y][x].color = COLOR_BLACK;
-		}
+		button[i] = 0;
 	}
 }
 

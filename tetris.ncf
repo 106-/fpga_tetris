@@ -13,6 +13,8 @@
         <options>
             <source_files>
                 <source_file filepath="true">main.c</source_file>
+                <source_file filepath="true">tetris.c</source_file>
+                <source_file filepath="true">view.c</source_file>
             </source_files>
             <bsp_settings_tcl_script filepath="true"/>
         </options>
